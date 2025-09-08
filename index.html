@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Knight Adventure – Epic Pixel</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#0B0B3B; font-family:'Courier New', monospace; }
+canvas { display:block; image-rendering: pixelated; }
+#controls { position:absolute; bottom:10px; width:100%; text-align:center; z-index:10; }
+.btn { background:rgba(0,0,0,0.6); color:white; font-size:28px; border:none; padding:15px 20px; margin:5px; border-radius:12px; cursor:pointer; touch-action:manipulation; }
+.btn:active { background: rgba(0,0,0,0.8); }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="controls">
+<button class="btn" id="leftBtn">⏪</button>
+<button class="btn" id="jumpBtn">⏫</button>
+<button class="btn" id="attackBtn">⚔️</button>
+<button class="btn" id="rightBtn">⏩</button>
+</div>
+
+<script>
+// ===================== CONFIGURAÇÃO =====================
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+let groundLevel;
+
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    groundLevel = canvas.height - 150;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+// CONTROLES
+let keys = {left:false, right:false, up:false, attack:false};
+const buttons = {left:"leftBtn", right:"rightBtn", up:"jumpBtn", attack:"attackBtn"};
+
+Object.keys(buttons).forEach(k=>{
+    const el = document.getElementById(buttons[k]);
+    el.addEventListener("touchstart", e=>{ e.preventDefault(); keys[k]=true; });
+    el.addEventListener("touchend", e=>{ e.preventDefault(); keys[k]=false; });
+});
+
+document.addEventListener("keydown", e=>{
+    if(e.key==="ArrowLeft") keys.left=true;
+    if(e.key==="ArrowRight") keys.right=true;
+    if(e.key==="ArrowUp" || e.code==="Space") keys.up=true;
+    if(e.key==="z" || e.key==="Z") keys.attack=true;
+    if(e.key==="Enter" && gameOver) resetGame();
+});
+
+document.addEventListener("keyup", e=>{
+    if(e.key==="ArrowLeft") keys.left=false;
+    if(e.key==="ArrowRight") keys.right=false;
+    if(e.key==="ArrowUp" || e.code==="Space") keys.up=false;
+    if(e.key==="z" || e.key==="Z") keys.attack=false;
+});
+
+let cameraX = 0;
+let gameOver = false;
+
+// ===================== PARTICULAS =====================
+class Particle{
+    constructor(x,y,color,size=4){
+        this.x = x; this.y = y;
+        this.vx = (Math.random()-0.5)*4;
+        this.vy = Math.random()*-3-1;
+        this.alpha = 1;
+        this.color = color;
+        this.size = size;
+    }
+    update(){ this.x+=this.vx; this.y+=this.vy; this.alpha-=0.04; }
+    draw(){
+        ctx.globalAlpha=this.alpha;
+        ctx.fillStyle=this.color;
+        ctx.fillRect(Math.floor(this.x-cameraX),Math.floor(this.y),this.size,this.size);
+        ctx.globalAlpha=1;
+    }
+}
+
+// ===================== PLAYER =====================
+class Player{
+    constructor(){
+        this.w=48; this.h=48;
+        this.x=200; this.y=groundLevel-this.h;
+        this.velY=0; this.speed=5;
+        this.lives=3; this.score=0;
+        this.onGround=true; this.frame=0;
+        this.attackCooldown=0;
+        this.attackFrame=0;
+    }
+    update(){
+        if(keys.left) this.x-=this.speed;
+        if(keys.right) this.x+=this.speed;
+
+        this.velY+=0.9;
+        this.y+=this.velY;
+
+        if(this.y+this.h>=groundLevel){
+            this.y=groundLevel-this.h;
+            this.velY=0;
+            this.onGround=true;
+        }
+
+        if(keys.up && this.onGround){
+            this.velY=-16;
+            this.onGround=false;
+        }
+
+        if(keys.left || keys.right){ this.frame+=0.2; if(this.frame>3) this.frame=0; } 
+        else this.frame=0;
+
+        if(this.attackCooldown>0){ 
+            this.attackCooldown--; 
+            this.attackFrame+=0.5;
+            if(this.attackFrame>4) this.attackFrame=0;
+        }
+    }
+    attack(){ if(this.attackCooldown===0){ this.attackCooldown=20; this.attackFrame=0; return true;} return false;}
+    draw(){
+        // sombra
+        ctx.fillStyle="rgba(0,0,0,0.3)";
+        ctx.fillRect(this.x-cameraX+10,this.y+this.h-5,28,6);
+
+        // pernas
+        ctx.fillStyle="#1E3A8A"; 
+        ctx.fillRect(this.x-cameraX+10,this.y+32,10,16);
+        ctx.fillRect(this.x-cameraX+28,this.y+32,10,16);
+        // tronco
+        ctx.fillRect(this.x-cameraX+12,this.y+12,24,20);
+        // braços
+        ctx.fillRect(this.x-cameraX, this.y+14,12,20);
+        ctx.fillRect(this.x-cameraX+36,this.y+14,12,20);
+        // cabeça com capacete
+        ctx.fillStyle="#FFD700"; 
+        ctx.fillRect(this.x-cameraX+14,this.y,20,14);
+        ctx.fillStyle="#FFA500"; 
+        ctx.fillRect(this.x-cameraX+14,this.y,20,4);
+
+        // espada animada
+        if(keys.attack || this.attackCooldown>0){ 
+            ctx.fillStyle="#FFD700"; 
+            let swing = Math.sin(this.attackFrame)*8;
+            ctx.fillRect(this.x-cameraX+48+swing,this.y+18,12,4); 
+        } else { 
+            ctx.fillStyle="#FFD700";
+            ctx.fillRect(this.x-cameraX+36,this.y+20,8,16); 
+        }
+    }
+}
+
+// ===================== INIMIGOS =====================
+class Enemy{
+    constructor(x,type=0){
+        this.x=x;
+        this.y=groundLevel-48;
+        this.size=48;
+        this.speed=2;
+        this.direction=Math.random()<0.5?-1:1;
+        this.alive=true;
+        this.type=type;
+    }
+    update(){ 
+        this.x+=this.speed*this.direction; 
+        if(this.x<cameraX-60) this.direction=1; 
+        if(this.x>cameraX+canvas.width+60) this.direction=-1;
+    }
+    draw(){
+        if(!this.alive) return;
+
+        // sombra
+        ctx.fillStyle="rgba(0,0,0,0.3)";
+        ctx.fillRect(this.x-cameraX+8,this.y+this.size-5,this.size-16,5);
+
+        if(this.type==0){ 
+            ctx.fillStyle="#006400"; 
+            ctx.fillRect(this.x-cameraX,this.y,this.size,this.size); 
+            ctx.fillStyle="#FFFF00"; 
+            ctx.fillRect(this.x-cameraX+12,this.y+12,8,8); 
+            ctx.fillRect(this.x-cameraX+28,this.y+12,8,8);
+        } else { 
+            ctx.fillStyle="#FFFFFF"; 
+            ctx.fillRect(this.x-cameraX,this.y,this.size,this.size); 
+            ctx.fillStyle="#000000"; 
+            ctx.fillRect(this.x-cameraX+14,this.y+12,8,8); 
+            ctx.fillRect(this.x-cameraX+28,this.y+12,8,8);
+        }
+    }
+}
+
+// ===================== BACKGROUND =====================
+class Background{
+    constructor(x,y,width,height,color,layer,type="tree"){
+        this.x=x; this.y=y; this.width=width; this.height=height; 
+        this.color=color; this.layer=layer; this.type=type;
+        this.windOffset = Math.random()*Math.PI*2;
+    }
+    update(){ 
+        this.x -= 0.5*this.layer; 
+        if(this.x+this.width<cameraX) this.x=cameraX+canvas.width+50; 
+        this.windOffset += 0.02;
+    }
+    draw(){
+        if(this.type==="tree"){
+            // tronco
+            ctx.fillStyle="#654321"; 
+            ctx.fillRect(Math.floor(this.x-cameraX*this.layer+this.width/3),this.y,this.width/3,this.height);
+
+            // copa com vento
+            let sway = Math.sin(this.windOffset)*10;
+            ctx.fillStyle="#006400"; 
+            ctx.beginPath(); 
+            ctx.arc(Math.floor(this.x-cameraX*this.layer+this.width/2+sway),this.y, this.width/1.5, 0, Math.PI*2); 
+            ctx.fill();
+        } else if(this.type==="tower"){
+            ctx.fillStyle=this.color; 
+            ctx.fillRect(Math.floor(this.x-cameraX*this.layer),this.y,this.width,this.height);
+
+            // bandeira animada
+            let flagHeight = 10 + Math.sin(Date.now()/200)*4;
+            ctx.fillStyle="red"; 
+            ctx.fillRect(Math.floor(this.x-cameraX*this.layer+this.width-5),this.y-flagHeight,this.width/3,flagHeight);
+        }
+    }
+}
+
+// ===================== LUA E ESTRELAS =====================
+let stars = [];
+for(let i=0;i<100;i++){ stars.push({x:Math.random()*2000, y:Math.random()*200, alpha: Math.random()}); }
+
+function drawMoon(){
+    let moonX = canvas.width-150-cameraX*0.1;
+    let moonY = 100;
+    let gradient = ctx.createRadialGradient(moonX,moonY,20,moonX,moonY,100);
+    gradient.addColorStop(0,"rgba(255,255,224,0.9)");
+    gradient.addColorStop(1,"rgba(255,255,224,0)");
+    ctx.fillStyle=gradient; 
+    ctx.beginPath(); 
+    ctx.arc(moonX,moonY,100,0,Math.PI*2); 
+    ctx.fill();
+
+    ctx.fillStyle="#FFFFE0"; 
+    ctx.beginPath(); 
+    ctx.arc(moonX,moonY,25,0,Math.PI*2); 
+    ctx.fill();
+
+    // estrelas
+    stars.forEach(s=>{
+        ctx.fillStyle = `rgba(255,255,255,${0.5+0.5*Math.sin(Date.now()/1000 + s.x)})`;
+        ctx.fillRect(s.x-cameraX*0.05, s.y, 2,2);
+    });
+}
+
+// ===================== OBJETOS =====================
+let player = new Player();
+let enemies = [new Enemy(500,0), new Enemy(900,1)];
+let backgrounds = [
+    new Background(100,groundLevel-150,50,150,"#654321",0.2,"tree"),
+    new Background(250,groundLevel-180,60,180,"#654321",0.25,"tree"),
+    new Background(450,groundLevel-160,50,160,"#654321",0.3,"tree"),
+    new Background(700,groundLevel-220,70,220,"#654321",0.15,"tower"),
+    new Background(1000,groundLevel-160,50,160,"#654321",0.3,"tree"),
+    new Background(1300,groundLevel-200,70,200,"#654321",0.2,"tower")
+];
+let particles = [];
+
+// ===================== SPAWN =====================
+function autoSpawnEnemies(){
+    let maxEnemiesOnScreen = 5;
+    let farthestX = enemies.length ? Math.max(...enemies.map(e => e.x)) : cameraX + canvas.width;
+    while(enemies.length < maxEnemiesOnScreen || farthestX < cameraX + canvas.width + 200){
+        let newX = farthestX + Math.random() * 400 + 200;
+        let type = Math.random()<0.5?0:1;
+        enemies.push(new Enemy(newX,type));
+        farthestX = newX;
+    }
+}
+
+// ===================== COLISÕES =====================
+function checkCollision(p,e){ return p.x<e.x+e.size && p.x+p.w>e.x && p.y<e.y+e.size && p.y+p.h>e.y; }
+function handleCollisions(){
+    enemies.forEach(enemy=>{
+        if(enemy.alive){
+            if((keys.attack || player.attackCooldown>0) && player.x < enemy.x && enemy.x < player.x + player.w + 12 && Math.abs(player.y - enemy.y)<48){
+                enemy.alive=false; player.score++;
+                for(let i=0;i<12;i++) particles.push(new Particle(enemy.x+24,enemy.y+24,"#FF0000",4));
+            } else if(checkCollision(player,enemy)){
+                player.lives--; enemy.alive=false;
+                for(let i=0;i<12;i++) particles.push(new Particle(enemy.x+24,enemy.y+24,"#800000",4));
+                if(player.lives<=0) gameOver=true;
+            }
+        }
+    });
+    enemies = enemies.filter(e=>e.alive || e.x+e.size>cameraX-60);
+}
+
+// ===================== HUD =====================
+function drawHUD(){
+    for(let i=0;i<player.lives;i++){ ctx.fillStyle="red"; ctx.fillRect(20+i*24,20,20,20);}
+    ctx.fillStyle="#fff"; ctx.font="24px Courier New"; ctx.fillText(`Score: ${player.score}`,20,60);
+}
+
+// ===================== GAMEOVER =====================
+function drawGameOver(){
+    ctx.fillStyle="rgba(0,0,0,0.7)"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="white"; ctx.font="48px Courier New"; ctx.fillText("GAME OVER",canvas.width/2-160,canvas.height/2-20);
+    ctx.font="24px Courier New"; ctx.fillText("Toque ou Enter para reiniciar",canvas.width/2-150,canvas.height/2+30);
+}
+
+function resetGame(){ 
+    player=new Player(); 
+    enemies=[new Enemy(500,0),new Enemy(900,1)]; 
+    particles=[]; 
+    gameOver=false; 
+}
+canvas.addEventListener("touchstart",()=>{if(gameOver) resetGame();});
+
+// ===================== LOOP =====================
+function gameLoop(){
+    // Céu gradiente
+    let grad = ctx.createLinearGradient(0,0,0,groundLevel);
+    grad.addColorStop(0,"#0B0B3B");
+    grad.addColorStop(1,"#0D1A4B");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,canvas.width,groundLevel);
+
+    drawMoon();
+    backgrounds.forEach(bg=>{ bg.update(); bg.draw(); });
+
+    // Chão pixelado com detalhes
+    for(let y=groundLevel; y<canvas.height; y+=4){
+        for(let x=0; x<canvas.width; x+=4){
+            let shade = Math.random()<0.3 ? "#1F7A1F" : "#228B22";
+            ctx.fillStyle = shade;
+            ctx.fillRect(x,y,4,4);
+        }
+    }
+
+    if(!gameOver){
+        player.update();
+        enemies.forEach(e=>{ e.speed=Math.min(2+player.score*0.2,6); e.update(); });
+        handleCollisions();
+        autoSpawnEnemies();
+        player.draw();
+        enemies.forEach(e=>e.draw());
+        particles.forEach(p=>{ p.update(); p.draw(); });
+        particles = particles.filter(p=>p.alpha>0);
+        drawHUD();
+        cameraX = player.x - 200;
+    } else drawGameOver();
+
+    requestAnimationFrame(gameLoop);
+}
+gameLoop();
+</script>
+</body>
+</html>
