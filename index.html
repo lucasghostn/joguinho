@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0" />
+<title>Aventuras do Espadachim Pixelado</title>
+<style>
+  :root{
+    --bg:#0b0b0f;
+    --panel:#111;
+    --accent:#e6d400;
+    --text:#eee;
+  }
+  html,body{
+    height:100%;
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: "Press Start 2P", monospace, system-ui;
+    -webkit-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+  }
+
+  .center {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    height:100vh;
+    width:100vw;
+    position:relative;
+  }
+
+  canvas#gameCanvas{
+    image-rendering: pixelated;
+    border: 4px solid #222;
+    background: linear-gradient(#071218,#00121a);
+    width: min(90vw, 800px);
+    height: calc(min(90vw,800px) * 3/4);
+    touch-action: none;
+  }
+
+  /* Overlays */
+  .overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:20;
+    pointer-events: none;
+  }
+
+  #menuScreen, #gameOverScreen, #howToPlayScreen {
+    pointer-events: auto;
+    background: rgba(0,0,0,0.75);
+    padding:20px;
+    border-radius:8px;
+    text-align:center;
+    color:var(--text);
+    width: min(92vw, 600px);
+  }
+
+  h1{ margin:0 0 14px 0; color:#ff88ff; font-size:20px; }
+  button.btn {
+    display:inline-block;
+    margin:8px;
+    padding:12px 18px;
+    font-size:12px;
+    cursor:pointer;
+    border:2px solid #444;
+    background:#0f0f0f;
+    color:var(--text);
+    border-radius:6px;
+  }
+  button.btn:active{ transform:translateY(1px); }
+
+  /* HUD */
+  #hud {
+    position:absolute;
+    top:12px;
+    left:12px;
+    z-index:15;
+    color:var(--text);
+    font-size:12px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+  }
+  .healthBox{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:rgba(0,0,0,0.35);
+    padding:6px 8px;
+    border-radius:6px;
+    border:1px solid rgba(255,255,255,0.05);
+  }
+  .healthBar{
+    width:120px;
+    height:14px;
+    background:#330000;
+    border:1px solid #550000;
+    position:relative;
+  }
+  .healthFill{
+    height:100%;
+    background:limegreen;
+    width:100%;
+  }
+
+  /* Mobile controls */
+  #mobileControls {
+    position:absolute;
+    bottom:18px;
+    left:0;
+    right:0;
+    display:flex;
+    justify-content:space-between;
+    width:100%;
+    pointer-events:auto;
+    padding:0 18px;
+    z-index:14;
+    box-sizing:border-box;
+  }
+  .dpad, .buttons {
+    display:flex;
+    gap:12px;
+    align-items:center;
+  }
+  .controlButton {
+    width:62px;
+    height:62px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.06);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:22px;
+    color:var(--text);
+    -webkit-user-select:none; user-select:none;
+    touch-action: none;
+  }
+  .small {
+    width:50px; height:50px; font-size:18px;
+  }
+
+  @media (min-width:900px){
+    #mobileControls{ display:none; } /* hide on desktop */
+  }
+
+  /* small helper */
+  p.small { font-size:11px; color:#bbb; margin:8px 0 0; }
+</style>
+</head>
+<body>
+  <div class="center">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="healthBox">
+        VIDA:
+        <div class="healthBar"><div id="healthFill" class="healthFill"></div></div>
+      </div>
+      <div style="background:rgba(0,0,0,0.35); padding:6px 10px; border-radius:6px;">
+        PONTOS: <span id="scoreDisplay">0</span>
+      </div>
+    </div>
+
+    <!-- Menu overlay -->
+    <div id="menuOverlay" class="overlay">
+      <div id="menuScreen">
+        <h1>Aventuras do Espadachim Pixelado</h1>
+        <div style="margin-bottom:10px;">Derrote 20 monstros para vencer. Use ← → para andar, ↑ para pular e Z para atacar. No celular use os botões.</div>
+        <div>
+          <button id="startButton" class="btn">Iniciar Jogo</button>
+          <button id="howToButton" class="btn">Como Jogar</button>
+        </div>
+        <p class="small">Toque / clique no botão Iniciar para começar.</p>
+      </div>
+    </div>
+
+    <!-- How to play -->
+    <div id="howToOverlay" class="overlay" style="display:none;align-items:center;">
+      <div id="howToPlayScreen">
+        <h1>Como Jogar</h1>
+        <p style="text-align:left">
+          • Movimento: ← → (teclado) ou botões na tela.<br>
+          • Pulo: ↑ (ou toque no canvas duas vezes).<br>
+          • Ataque: Z (ou botão 🗡️).<br>
+          • Cada inimigo derrotado vale 1 ponto. Ao chegar em 20 pontos — você vence.<br>
+          • Tome cuidado: a vida reduz ao colidir com inimigos; fique atento aos mini-chefes.
+        </p>
+        <div style="text-align:center; margin-top:8px;">
+          <button id="backFromHowTo" class="btn">Voltar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game over -->
+    <div id="gameOverOverlay" class="overlay" style="display:none;">
+      <div id="gameOverScreen" style="display:flex;flex-direction:column;align-items:center;">
+        <h1 id="gameOverTitle">Fim de Jogo!</h1>
+        <p>Pontuação final: <strong id="finalScore">0</strong></p>
+        <div>
+          <button id="restartButton" class="btn">Reiniciar</button>
+          <button id="menuButton" class="btn">Voltar ao Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile controls -->
+    <div id="mobileControls" style="display:flex;">
+      <div class="dpad">
+        <div id="leftBtn" class="controlButton small">◀</div>
+        <div id="rightBtn" class="controlButton small">▶</div>
+      </div>
+      <div class="buttons">
+        <div id="jumpBtn" class="controlButton small">▲</div>
+        <div id="attackBtn" class="controlButton small">🗡️</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Aventuras do Espadachim Pixelado
+  - Single-file game (HTML + CSS + JS)
+  - Simple pixel-style drawing (no external assets required)
+  - Controls: keyboard and mobile touch
+  - Goal: reach 20 points to win OR lose all life
+*/
+
+/* ------------ Canvas & scaling -------------- */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha:false });
+
+// Logical game resolution (pixel-perfect scaling)
+const GAME_W = 320;
+const GAME_H = 240;
+
+function resizeCanvas(){
+  // keep canvas logical size constant and scale visually via CSS
+  const cssWidth = canvas.clientWidth;
+  const cssHeight = canvas.clientHeight;
+  canvas.width = GAME_W;
+  canvas.height = GAME_H;
+  ctx.imageSmoothingEnabled = false;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+/* ------------ DOM elements -------------- */
+const menuOverlay = document.getElementById('menuOverlay');
+const startButton = document.getElementById('startButton');
+const howToButton = document.getElementById('howToButton');
+const howToOverlay = document.getElementById('howToOverlay');
+const backFromHowTo = document.getElementById('backFromHowTo');
+const gameOverOverlay = document.getElementById('gameOverOverlay');
+const finalScoreEl = document.getElementById('finalScore');
+const restartButton = document.getElementById('restartButton');
+const menuButton = document.getElementById('menuButton');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const healthFill = document.getElementById('healthFill');
+
+/* Mobile controls */
+const leftBtn = document.getElementById('leftBtn');
+const rightBtn = document.getElementById('rightBtn');
+const jumpBtn = document.getElementById('jumpBtn');
+const attackBtn = document.getElementById('attackBtn');
+
+/* Game state */
+let running = false;
+let paused = false;
+let score = 0;
+let lastTime = 0;
+let spawnTimer = 0;
+let spawnInterval = 1400; // ms
+let enemySpeedBase = 40;
+let enemies = [];
+let particles = [];
+let gameOverReason = '';
+
+/* Player */
+const player = {
+  x: 60,
+  y: GAME_H - 48,
+  w: 18,
+  h: 24,
+  vx:0,
+  vy:0,
+  speed: 90,
+  jumpForce: -220,
+  onGround: true,
+  facing: 1, // 1 right, -1 left
+  healthMax: 3,
+  health: 3,
+  attackCooldown: 0,
+  attackDuration: 220, // ms visible attack
+  attacking: false,
+  attackTimer: 0
+};
+
+/* Ground */
+const groundY = GAME_H - 16;
+
+/* Input */
+const keys = {};
+window.addEventListener('keydown', e=>{
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' '){ e.preventDefault(); } // stop scroll
+});
+window.addEventListener('keyup', e=>{
+  keys[e.key.toLowerCase()] = false;
+});
+
+/* Touch/mouse input for mobile double-tap jump */
+let lastTap = 0;
+canvas.addEventListener('pointerdown', (ev)=>{
+  const t = Date.now();
+  if (t - lastTap < 300){
+    // double tap -> jump
+    tryJump();
+  }
+  lastTap = t;
+});
+
+/* Mobile control handlers */
+let mobileLeft = false;
+let mobileRight = false;
+let mobileJump = false;
+let mobileAttack = false;
+
+function addMobileListeners(btn, prop){
+  btn.addEventListener('pointerdown', e => { e.preventDefault(); if(prop==='left') mobileLeft=true; if(prop==='right') mobileRight=true; if(prop==='jump') tryJump(); if(prop==='attack') doAttack(); });
+  btn.addEventListener('pointerup', e => { e.preventDefault(); if(prop==='left') mobileLeft=false; if(prop==='right') mobileRight=false; });
+  btn.addEventListener('pointercancel', e => { if(prop==='left') mobileLeft=false; if(prop==='right') mobileRight=false; });
+  btn.addEventListener('pointerleave', e => { if(prop==='left') mobileLeft=false; if(prop==='right') mobileRight=false; });
+}
+addMobileListeners(leftBtn, 'left');
+addMobileListeners(rightBtn, 'right');
+addMobileListeners(jumpBtn, 'jump');
+addMobileListeners(attackBtn, 'attack');
+
+/* Game control buttons */
+startButton.addEventListener('click', () => { startGame(); });
+howToButton.addEventListener('click', () => { howToOverlay.style.display='flex'; menuOverlay.style.display='none'; });
+backFromHowTo.addEventListener('click', ()=>{ howToOverlay.style.display='none'; menuOverlay.style.display='flex'; });
+restartButton.addEventListener('click', ()=>{ startGame(); });
+menuButton.addEventListener('click', ()=>{ showMenu(); });
+
+function showMenu(){
+  running=false;
+  menuOverlay.style.display='flex';
+  gameOverOverlay.style.display='none';
+  howToOverlay.style.display='none';
+}
+
+/* ------------ Game logic -------------- */
+
+function startGame(){
+  // reset
+  running = true;
+  score = 0;
+  spawnTimer = 0;
+  enemySpeedBase = 40;
+  enemies = [];
+  particles = [];
+  player.x = 60;
+  player.y = GAME_H - 48;
+  player.vx = 0; player.vy = 0;
+  player.health = player.healthMax;
+  player.attacking = false;
+  player.attackTimer = 0;
+  player.attackCooldown = 0;
+  menuOverlay.style.display='none';
+  howToOverlay.style.display='none';
+  gameOverOverlay.style.display='none';
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+  updateHUD();
+}
+
+/* Enemy constructor */
+function spawnEnemy(type='normal'){
+  // types: normal, fast, miniBoss
+  const y = groundY - 24;
+  const fromRight = Math.random() < 0.6;
+  const x = fromRight ? GAME_W + 16 : -32;
+  const dir = fromRight ? -1 : 1;
+  let hp = 1;
+  let speed = enemySpeedBase + Math.random()*20;
+  if (type === 'fast'){ speed += 30; hp = 1; }
+  if (type === 'miniBoss'){ hp = 3; speed = enemySpeedBase * 0.6; }
+  enemies.push({ x, y, w:18, h:20, dir, speed, hp, type });
+}
+
+/* Attack */
+function doAttack(){
+  if (player.attackCooldown <= 0){
+    player.attacking = true;
+    player.attackTimer = player.attackDuration;
+    player.attackCooldown = 350; // ms cooldown between swings
+  }
+}
+
+/* Jump */
+function tryJump(){
+  if (player.onGround){
+    player.vy = player.jumpForce;
+    player.onGround = false;
+  }
+}
+
+function updateHUD(){
+  scoreDisplay.textContent = score;
+  const pct = Math.max(0, (player.health / player.healthMax) * 100);
+  healthFill.style.width = pct + '%';
+}
+
+/* Collisions */
+function rectsOverlap(a,b){
+  return !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
+}
+
+/* Particle (simple) */
+function spawnHitParticles(x,y,count=6){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*80,
+      vy: (Math.random()-1.2)*80,
+      life: 300 + Math.random()*400
+    });
+  }
+}
+
+/* Game loop */
+function loop(t){
+  if (!running) return;
+  const dt = Math.min(40, t - lastTime) / 1000; // clamp dt
+  lastTime = t;
+
+  // Input
+  let moveLeft = keys['arrowleft'] || keys['a'] || mobileLeft;
+  let moveRight = keys['arrowright'] || keys['d'] || mobileRight;
+  let jumpKey = keys['arrowup'] || keys['w'];
+  let attackKey = keys['z'] || keys['k'];
+
+  if (jumpKey) tryJump();
+  if (attackKey) doAttack();
+
+  // horizontal
+  player.vx = 0;
+  if (moveLeft){ player.vx = -player.speed; player.facing = -1; }
+  if (moveRight){ player.vx = player.speed; player.facing = 1; }
+
+  // physics
+  player.x += player.vx * dt;
+  player.vy += 520 * dt; // gravity
+  player.y += player.vy * dt;
+
+  // ground collision
+  if (player.y + player.h > groundY){
+    player.y = groundY - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // keep inside horizontally
+  player.x = Math.max(8, Math.min(GAME_W - player.w - 8, player.x));
+
+  // attack timers
+  if (player.attackCooldown > 0) player.attackCooldown -= dt*1000;
+  if (player.attacking){
+    player.attackTimer -= dt*1000;
+    if (player.attackTimer <= 0) player.attacking = false;
+  }
+
+  // spawn logic: difficulty rises with score
+  spawnTimer += dt*1000;
+  spawnInterval = Math.max(600, 1400 - score*40);
+  if (spawnTimer > spawnInterval){
+    spawnTimer = 0;
+    // chance of stronger enemy with score progression
+    const r = Math.random();
+    if (score >= 12 && r < 0.08) spawnEnemy('miniBoss');
+    else if (r < 0.25 + score*0.01) spawnEnemy('fast');
+    else spawnEnemy('normal');
+  }
+
+  // update enemies
+  for (let i = enemies.length-1; i>=0; i--){
+    const e = enemies[i];
+    e.x += e.speed * e.dir * dt;
+    // flip direction if off-screen by too much
+    if (e.x < -80 || e.x > GAME_W + 80){
+      enemies.splice(i,1);
+      continue;
+    }
+
+    // collision with player
+    if (rectsOverlap({x:player.x,y:player.y,w:player.w,h:player.h}, e)){
+      // if player attacking and the attack hit box overlaps -> enemy hurt
+      if (player.attacking){
+        // calculate attack box in front of player
+        const attackBox = {
+          x: player.facing === 1 ? player.x + player.w : player.x - 18,
+          y: player.y + 6,
+          w: 18,
+          h: 12
+        };
+        if (rectsOverlap(attackBox, e)){
+          // hit enemy
+          e.hp -= 1;
+          spawnHitParticles(e.x + e.w/2, e.y + e.h/2, 8);
+          if (e.hp <= 0){
+            // kill
+            enemies.splice(i,1);
+            score += 1;
+            updateHUD();
+            // scale up difficulty slightly
+            enemySpeedBase += 0.5;
+            // play small "win" effect by brief screen flash (handled via particles)
+            for (let p=0;p<6;p++) spawnHitParticles(player.x+player.w/2, player.y+player.h/2, 1);
+            // if score reached milestone, spawn mini-boss sometimes
+          }
+        } else {
+          // touched while attacking but not hitting -> player still gets hurt by enemy
+          // don't double-damage
+          damagePlayer();
+        }
+      } else {
+        // not attacking -> take damage
+        damagePlayer();
+      }
+    }
+  }
+
+  // update particles
+  for (let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.life -= dt*1000;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 180 * dt;
+    if (p.life <= 0) particles.splice(i,1);
+  }
+
+  // Win condition
+  if (score >= 20){
+    gameOverReason = 'win';
+    endGame();
+    return;
+  }
+
+  // Lose condition
+  if (player.health <= 0){
+    gameOverReason = 'dead';
+    endGame();
+    return;
+  }
+
+  // render
+  render();
+
+  requestAnimationFrame(loop);
+}
+
+/* Damage player */
+let lastDamageTime = 0;
+function damagePlayer(){
+  const now = performance.now();
+  if (now - lastDamageTime < 600) return; // invuln brief
+  lastDamageTime = now;
+  player.health -= 1;
+  spawnHitParticles(player.x+player.w/2, player.y+player.h/2, 10);
+  updateHUD();
+}
+
+/* End game */
+function endGame(){
+  running = false;
+  // display overlay
+  finalScoreEl.textContent = score;
+  const title = document.getElementById('gameOverTitle');
+  if (gameOverReason === 'win'){
+    title.textContent = 'Você Venceu! 🎉';
+  } else {
+    title.textContent = 'Você Morreu!';
+  }
+  gameOverOverlay.style.display = 'flex';
+}
+
+/* ---------- Rendering (pixel-style) ---------- */
+
+function drawBackground(){
+  // simple parallax-ish layered background
+  // sky
+  ctx.fillStyle = '#041417';
+  ctx.fillRect(0,0,GAME_W,GAME_H);
+
+  // distant trees (repeated)
+  ctx.fillStyle = '#072a22';
+  for (let i=0;i<12;i++){
+    const tx = (i*60 + (performance.now()/80|0) % 60) % (GAME_W+60) - 30;
+    ctx.fillRect(tx, GAME_H-92, 10, 60);
+    ctx.fillRect(tx-10, GAME_H-82, 30, 8);
+  }
+
+  // ground
+  ctx.fillStyle = '#0c2a1f';
+  ctx.fillRect(0, groundY, GAME_W, GAME_H-groundY);
+
+  // moss / stones
+  for (let i=0;i<10;i++){
+    const sx = (i*40 + 7) % GAME_W;
+    ctx.fillStyle = '#123a2e';
+    ctx.fillRect(sx, groundY + 4, 10, 6);
+  }
+}
+
+function render(){
+  // clear (background drawn)
+  drawBackground();
+
+  // draw enemies
+  for (const e of enemies){
+    drawEnemy(e);
+  }
+
+  // draw player
+  drawPlayer(player);
+
+  // draw particles
+  for (const p of particles){
+    ctx.fillStyle = 'rgba(255,200,80,0.95)';
+    drawPixelRect(p.x-1, p.y-1, 2, 2);
+  }
+
+  // small HUD inside canvas (optional)
+  // draw sword hitbox if attacking (for debug-like feedback)
+  if (player.attacking){
+    const ax = player.facing === 1 ? player.x + player.w : player.x - 18;
+    ctx.fillStyle = 'rgba(255,255,200,0.12)';
+    ctx.fillRect(ax, player.y + 6, 18, 12);
+  }
+}
+
+/* helpers for drawing "pixel" rectangles with integer coords */
+function drawPixelRect(x,y,w,h){
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+
+/* draw player as pixel art block with simple animation */
+let playerBlink = 0;
+function drawPlayer(p){
+  // body
+  ctx.save();
+  ctx.translate(0,0);
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  drawPixelRect(p.x+2, p.y + p.h - 2, p.w-2, 3);
+
+  // body
+  ctx.fillStyle = '#ffd6a6';
+  drawPixelRect(p.x+3, p.y+2, p.w-6, p.h-8); // torso
+  // armor/vest
+  ctx.fillStyle = '#6f6f6f';
+  drawPixelRect(p.x+3, p.y+2 + Math.floor(Math.sin(performance.now()/140)/2), p.w-6, 6);
+
+  // head
+  ctx.fillStyle = '#f0c7a0';
+  drawPixelRect(p.x+4, p.y-4, 10, 8);
+
+  // legs
+  ctx.fillStyle = '#333';
+  drawPixelRect(p.x+3, p.y+p.h-8, 6, 6);
+  drawPixelRect(p.x+9, p.y+p.h-8, 6, 6);
+
+  // sword (if not attacking, show sheathed slight)
+  if (!p.attacking){
+    // small short sword at side
+    ctx.fillStyle = '#bfbfbf';
+    const sx = p.facing===1 ? p.x + p.w - 2 : p.x - 8;
+    drawPixelRect(sx, p.y + 6, 8, 2); // blade
+    ctx.fillStyle = '#8c5a2f';
+    drawPixelRect(sx+2, p.y + 8, 4, 2); // handle
+  } else {
+    // draw swung sword in front
+    ctx.fillStyle = '#dcdcdc';
+    const bx = p.facing===1 ? p.x + p.w : p.x - 18;
+    drawPixelRect(bx, p.y + 8, 18, 3);
+    ctx.fillStyle = '#8c5a2f';
+    drawPixelRect(bx+6, p.y + 11, 6, 2);
+  }
+
+  ctx.restore();
+}
+
+/* draw enemy as simple pixel monster */
+function drawEnemy(e){
+  // body color by type
+  let body = '#7b2b2b';
+  if (e.type === 'fast') body = '#b3531a';
+  if (e.type === 'miniBoss') body = '#4b1b4b';
+
+  ctx.save();
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  drawPixelRect(e.x+2, e.y + e.h - 2, e.w-3, 3);
+
+  // body
+  ctx.fillStyle = body;
+  drawPixelRect(e.x, e.y, e.w, e.h);
+
+  // eyes
+  ctx.fillStyle = '#fff';
+  drawPixelRect(e.x + 3, e.y + 4, 3, 3);
+  drawPixelRect(e.x + e.w - 7, e.y + 4, 3, 3);
+  ctx.fillStyle = '#111';
+  drawPixelRect(e.x + 4, e.y + 5, 1, 1);
+  drawPixelRect(e.x + e.w - 6, e.y + 5, 1, 1);
+
+  // HP indicator small (for miniboss)
+  if (e.type === 'miniBoss'){
+    for (let i=0;i<e.hp;i++){
+      ctx.fillStyle = '#ff6666';
+      drawPixelRect(e.x + i*6, e.y - 6, 4, 3);
+    }
+  }
+
+  ctx.restore();
+}
+
+/* ---------- Start on load showing menu ---------- */
+showMenu();
+updateHUD();
+
+</script>
+</body>
+</html>
