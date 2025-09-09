@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Shadowfall: Protótipo</title>
+<style>
+  body { margin: 0; background: #111; color: #fff; font-family: sans-serif; }
+  #game-container { width: 100vw; height: 100vh; overflow: hidden; }
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 18px;
+    z-index: 10;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js"></script>
+</head>
+<body>
+<div id="game-container"></div>
+<div id="ui">Vida: <span id="hp">100</span></div>
+<script>
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    backgroundColor: '#222',
+    parent: 'game-container',
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 1000 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+const game = new Phaser.Game(config);
+let player, cursors, keys, enemies, canDash = true, dashCooldown = 0;
+let hp = 100;
+
+function preload() {
+    this.load.image('player', 'https://i.imgur.com/1cX5X8E.png');
+    this.load.image('ground', 'https://i.imgur.com/3Z3p2KU.png');
+    this.load.image('enemy', 'https://i.imgur.com/9Qqkz5b.png');
+}
+
+function create() {
+    // Chão
+    const ground = this.physics.add.staticGroup();
+    ground.create(400, 580, 'ground').setScale(2).refreshBody();
+
+    // Jogador
+    player = this.physics.add.sprite(100, 450, 'player');
+    player.setCollideWorldBounds(true);
+    player.body.setSize(32, 48);
+
+    // Inimigos
+    enemies = this.physics.add.group();
+    let enemy = enemies.create(600, 450, 'enemy');
+    enemy.setCollideWorldBounds(true);
+    enemy.body.setVelocityX(50);
+    enemy.body.setBounce(1, 0);
+
+    // Colisões
+    this.physics.add.collider(player, ground);
+    this.physics.add.collider(enemies, ground);
+    this.physics.add.collider(player, enemies, hitEnemy, null, this);
+
+    // Controles
+    cursors = this.input.keyboard.createCursorKeys();
+    keys = this.input.keyboard.addKeys({
+        'W': Phaser.Input.Keyboard.KeyCodes.W,
+        'A': Phaser.Input.Keyboard.KeyCodes.A,
+        'S': Phaser.Input.Keyboard.KeyCodes.S,
+        'D': Phaser.Input.Keyboard.KeyCodes.D,
+        'SPACE': Phaser.Input.Keyboard.KeyCodes.SPACE
+    });
+}
+
+function update(time, delta) {
+    const speed = 200;
+    const dashSpeed = 400;
+    const jumpPower = 400;
+    
+    // Movimento horizontal
+    if (cursors.left.isDown || keys.A.isDown) {
+        player.setVelocityX(-speed);
+    } else if (cursors.right.isDown || keys.D.isDown) {
+        player.setVelocityX(speed);
+    } else {
+        player.setVelocityX(0);
+    }
+
+    // Pulo
+    if ((cursors.up.isDown || keys.W.isDown || keys.SPACE.isDown) && player.body.onFloor()) {
+        player.setVelocityY(-jumpPower);
+    }
+
+    // Dash no ar
+    if ((cursors.shift.isDown || keys.SHIFT?.isDown) && canDash) {
+        if (cursors.left.isDown || keys.A.isDown) {
+            player.setVelocityX(-dashSpeed);
+        } else if (cursors.right.isDown || keys.D.isDown) {
+            player.setVelocityX(dashSpeed);
+        }
+        canDash = false;
+        dashCooldown = 500; // meio segundo
+    }
+
+    if (!canDash) {
+        dashCooldown -= delta;
+        if (dashCooldown <= 0) canDash = true;
+    }
+
+    // Atualiza UI
+    document.getElementById('hp').innerText = hp;
+}
+
+// Colisão com inimigo
+function hitEnemy(player, enemy) {
+    hp -= 1;
+    if (hp <= 0) {
+        hp = 0;
+        player.setTint(0xff0000);
+        player.setVelocity(0,0);
+        player.body.enable = false;
+    }
+}
+</script>
+</body>
+</html>
+
