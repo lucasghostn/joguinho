@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>The Tarnished's Trial - Mobile Ready</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #111;
+    font-family: 'Arial', sans-serif;
+    overflow: hidden;
+  }
+
+  #menu {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+  }
+  #menu h1 {
+    font-size: 48px;
+    margin-bottom: 20px;
+    color: #ccc;
+    text-shadow: 2px 2px #000;
+  }
+  #menu button {
+    padding: 15px 30px;
+    font-size: 24px;
+    cursor: pointer;
+    background: #333;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+  }
+
+  .game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  #gameCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #222;
+  }
+
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 18px;
+    z-index: 5;
+    color: #ffd700;
+  }
+  .bar-container {
+    width: 150px;
+    height: 15px;
+    background: #444;
+    border: 2px solid #999;
+    margin-bottom: 5px;
+  }
+  .bar {
+    height: 100%;
+    width: 100%;
+  }
+  #healthBar { background: red; }
+  #staminaBar { background: #00f; }
+
+  /* Mobile Controls */
+  .mobile-controls {
+    position: fixed;
+    bottom: 20px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 100;
+    pointer-events: none; /* deixa o canvas ainda clicável fora dos botões */
+  }
+  .movement-controls, .action-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    pointer-events: auto;
+  }
+  .control-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    font-size: 24px;
+    background: rgba(100,100,100,0.5);
+    border: 2px solid #999;
+    color: #fff;
+    text-align: center;
+    line-height: 60px;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>The Tarnished's Trial</h1>
+  <button id="startBtn">Start Game</button>
+</div>
+
+<div class="game-container">
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="hud" style="display:none;">
+    <div class="bar-container"><div id="healthBar" class="bar"></div></div>
+    <div class="bar-container"><div id="staminaBar" class="bar"></div></div>
+    <div>Pontuação: <span id="score">0</span></div>
+  </div>
+
+  <div class="mobile-controls">
+    <div class="movement-controls">
+      <button id="upBtn" class="control-btn">↑</button>
+      <button id="leftBtn" class="control-btn">←</button>
+      <button id="downBtn" class="control-btn">↓</button>
+      <button id="rightBtn" class="control-btn">→</button>
+    </div>
+    <div class="action-controls">
+      <button id="attackBtn" class="control-btn">⚔️</button>
+      <button id="dodgeBtn" class="control-btn">🏃</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const menu = document.getElementById('menu');
+const startBtn = document.getElementById('startBtn');
+const hud = document.getElementById('hud');
+const healthBar = document.getElementById('healthBar');
+const staminaBar = document.getElementById('staminaBar');
+const scoreDisplay = document.getElementById('score');
+
+let gameState = 'menu';
+let keys = {};
+let score = 0;
+
+// Player
+const player = {
+  x: canvas.width/2 - 25,
+  y: canvas.height - 150,
+  width: 50,
+  height: 50,
+  speed: 5,
+  health: 100,
+  stamina: 100,
+  attackRange: 50,
+  dodgeDuration: 500,
+  invulnerable: false
+};
+
+// Enemy array
+let enemies = [];
+
+// Eventos teclado
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+// Ataque e esquiva
+function attack(){
+  if(player.stamina >= 10){
+    player.stamina -=10;
+    attackHit();
+  }
+}
+function dodge(){
+  if(player.stamina >= 20 && !player.invulnerable){
+    player.stamina -=20;
+    player.invulnerable = true;
+    setTimeout(()=>player.invulnerable=false, player.dodgeDuration);
+  }
+}
+function attackHit(){
+  enemies.forEach((enemy,index)=>{
+    if(player.x + player.width + player.attackRange > enemy.x &&
+       player.x < enemy.x + enemy.width &&
+       player.y < enemy.y + enemy.height &&
+       player.y + player.height > enemy.y){
+         enemy.health -= 20;
+         enemy.hit = true;
+         if(enemy.health <=0){
+           enemies.splice(index,1);
+           score+=10;
+           scoreDisplay.textContent = score;
+         }
+       }
+  });
+}
+
+// Botões virtuais mobile
+const controls = [
+  {id:'upBtn', action:()=> keys['ArrowUp']=true},
+  {id:'downBtn', action:()=> keys['ArrowDown']=true},
+  {id:'leftBtn', action:()=> keys['ArrowLeft']=true},
+  {id:'rightBtn', action:()=> keys['ArrowRight']=true},
+  {id:'attackBtn', action:attack},
+  {id:'dodgeBtn', action:dodge}
+];
+controls.forEach(c=>{
+  const btn = document.getElementById(c.id);
+  btn.addEventListener('touchstart', e=>{e.preventDefault(); c.action();});
+  btn.addEventListener('touchend', e=>{
+    e.preventDefault();
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(btn.id.replace('Btn',''))) keys[btn.id.replace('Btn','')]=false;
+  });
+});
+
+// Start game
+startBtn.addEventListener('click', () => {
+  menu.style.display = 'none';
+  hud.style.display = 'block';
+  gameState='playing';
+  spawnEnemies();
+  gameLoop();
+});
+
+// Spawn enemies
+function spawnEnemies(){
+  for(let i=0;i<5;i++){
+    enemies.push({
+      x: Math.random()*(canvas.width-50),
+      y: Math.random()*(canvas.height/2),
+      width:40,
+      height:50,
+      health:40,
+      speed:1+Math.random()*2,
+      hit:false
+    });
+  }
+}
+
+// Player movement
+function movePlayer(){
+  if(keys['ArrowLeft'] || keys['a']) player.x-=player.speed;
+  if(keys['ArrowRight'] || keys['d']) player.x+=player.speed;
+  if(keys['ArrowUp'] || keys['w']) player.y-=player.speed;
+  if(keys['ArrowDown'] || keys['s']) player.y+=player.speed;
+
+  // Limites
+  player.x = Math.max(0,Math.min(canvas.width-player.width,player.x));
+  player.y = Math.max(0,Math.min(canvas.height-player.height,player.y));
+}
+
+// Enemy movement simples
+function moveEnemies(){
+  enemies.forEach(e=>{
+    const dx=player.x - e.x;
+    const dy=player.y - e.y;
+    const dist = Math.hypot(dx,dy);
+    e.x += (dx/dist)*e.speed;
+    e.y += (dy/dist)*e.speed;
+  });
+}
+
+// Detect collisions
+function detectCollisions(){
+  if(player.invulnerable) return;
+  enemies.forEach(e=>{
+    if(player.x<e.x+e.width &&
+       player.x+player.width>e.x &&
+       player.y<e.y+e.height &&
+       player.y+player.height>e.y){
+         player.health-=0.5;
+         healthBar.style.width = player.health+'%';
+         if(player.health<=0) gameOver();
+       }
+  });
+}
+
+// Game Over
+function gameOver(){
+  gameState='gameover';
+  alert('Game Over! Pontuação: '+score);
+  location.reload();
+}
+
+// Draw functions
+function drawPlayer(){
+  ctx.fillStyle='#555';
+  ctx.fillRect(player.x,player.y,player.width,player.height);
+  ctx.fillStyle='#999';
+  ctx.fillRect(player.x+10,player.y-10,player.width-20,10);
+
+  // Attack visual
+  if(keys[' ']){ 
+    ctx.fillStyle='#ccc';
+    ctx.shadowBlur=10; ctx.shadowColor='#ff0';
+    ctx.fillRect(player.x+player.width, player.y+10, player.attackRange, 5);
+    ctx.shadowBlur=0;
+  }
+}
+
+function drawEnemies(){
+  enemies.forEach(e=>{
+    ctx.fillStyle=e.hit?'#f00':'#900';
+    ctx.fillRect(e.x,e.y,e.width,e.height);
+    e.hit=false;
+  });
+}
+
+function drawScene(){
+  ctx.fillStyle='#333';
+  ctx.fillRect(0,canvas.height-50,canvas.width,50);
+}
+
+function gameLoop(){
+  if(gameState!=='playing') return;
+
+  movePlayer();
+  moveEnemies();
+  detectCollisions();
+
+  // Stamina regen
+  if(player.stamina<100) player.stamina+=0.1;
+  staminaBar.style.width = player.stamina+'%';
+
+  // Draw everything
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawScene();
+  drawPlayer();
+  drawEnemies();
+
+  requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
